@@ -106,7 +106,8 @@ private fun SiteRow(s: Site, included: Boolean?, onToggle: (Boolean) -> Unit, on
                 when {
                     s.ok -> "${s.products.size} products, checked ${prettyTime(s.checked)}"
                     s.products.isNotEmpty() -> "Couldn't be read ${prettyTime(s.checked)}; showing older prices"
-                    else -> "Couldn't be read: ${s.error ?: "unknown reason"}"
+                    s.own -> "Blocks automatic visitors, so your prices can't be read yet"
+                    else -> "Blocks automatic price checks"
                 },
                 style = MaterialTheme.typography.bodySmall, color = c.muted,
             )
