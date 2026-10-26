@@ -1,0 +1,13 @@
+/: HTTP 429  0 bytes
+/products: HTTP 429  0 bytes
+/products/hollyland-lark-m2s-combo: HTTP 429  0 bytes
+/sitemap.xml: HTTP 429  0 bytes
+/robots.txt: HTTP 429  0 bytes
+
+0 scripts on /products
+
+pages-router __NEXT_DATA__: no
+app-router RSC payload: no
+price-like values in /products HTML: 0 e.g. []
+name-like values: 0 e.g. []
+product links in /products HTML: 0 e.g. []
