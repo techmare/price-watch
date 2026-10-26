@@ -43,7 +43,7 @@ import com.techmare.pricewatch.MainViewModel
 enum class Tab(val label: String, val title: String, val icon: ImageVector) {
     TODAY("Today", "Price Watch", Icons.Outlined.Today),
     PRODUCTS("Products", "Your products", Icons.Outlined.Inventory2),
-    SEARCH("Search", "Search shops", Icons.Outlined.Search),
+    SEARCH("Market", "Other shops", Icons.Outlined.Search),
     SHOPS("Shops", "Shops", Icons.Outlined.Storefront),
 }
 

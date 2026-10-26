@@ -75,7 +75,7 @@ fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Uni
                     style = MaterialTheme.typography.bodyMedium, color = c.panelMuted,
                 )
                 TextButton(onClick = onSearch, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
-                    Text("Search competitor prices", color = c.signal)
+                    Text("Browse competitor products", color = c.signal)
                 }
             }
         } else Panel {
