@@ -21,6 +21,7 @@ import kotlinx.coroutines.withContext
 data class UiState(
     val loading: Boolean = true,
     val offline: Boolean = false,
+    val notReady: Boolean = false,
     val snapshot: Snapshot? = null,
     val comparisons: List<Comparison> = emptyList(),
     val changes: List<Change> = emptyList(),
@@ -46,8 +47,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun refresh() {
         _state.value = _state.value.copy(loading = true)
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) { repo.refresh() }
-            recompute(loading = false, offline = !ok)
+            val r = withContext(Dispatchers.IO) { repo.refresh() }
+            _state.value = _state.value.copy(notReady = r == Repository.Fetch.NOT_READY)
+            recompute(loading = false, offline = r == Repository.Fetch.OFFLINE)
         }
     }
 

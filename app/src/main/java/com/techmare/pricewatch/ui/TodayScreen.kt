@@ -32,7 +32,7 @@ import com.techmare.pricewatch.core.Comparison
 import com.techmare.pricewatch.core.Position
 
 @Composable
-fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Unit, onSeeAll: () -> Unit) {
+fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Unit, onSeeAll: () -> Unit, onSearch: () -> Unit) {
     val c = LocalAppColors.current
     val snap = state.snapshot
     if (snap == null) {
@@ -42,8 +42,8 @@ fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Uni
                 Text("No prices yet", style = MaterialTheme.typography.titleLarge, color = c.ink)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    if (state.offline) "Connect to the internet and pull down to load today's prices."
-                    else "The first price check hasn't finished. It runs every morning at about 6:15.",
+                    if (state.offline) "Couldn't reach the internet. Pull down to try again."
+                    else "The first price check hasn't finished yet. Pull down in a few minutes.",
                     style = MaterialTheme.typography.bodyMedium, color = c.muted,
                 )
             }
@@ -59,12 +59,26 @@ fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Uni
     val outs = state.changes.filter { it.url in byUrl && it.type == "out" }
     val shops = snap.competitors.filter { it.id !in state.excluded }
     val failed = shops.filter { !it.ok }
+    val ownMissing = snap.own?.products.isNullOrEmpty()
 
     Column(
         Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Panel {
+        if (ownMissing) {
+            Panel {
+                Text("Your prices aren't connected yet", style = MaterialTheme.typography.headlineMedium, color = c.panelText)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "midoxshop.ma blocks automatic visitors, so the daily check can't read your prices. " +
+                        "Competitor prices are ready: ${shops.sumOf { it.products.size }} products from ${shops.count { it.ok }} shops.",
+                    style = MaterialTheme.typography.bodyMedium, color = c.panelMuted,
+                )
+                TextButton(onClick = onSearch, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                    Text("Search competitor prices", color = c.signal)
+                }
+            }
+        } else Panel {
             Text(
                 when {
                     matched.isEmpty() -> "No matches yet"

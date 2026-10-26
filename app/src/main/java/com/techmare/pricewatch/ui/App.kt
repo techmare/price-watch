@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,6 +43,7 @@ import com.techmare.pricewatch.MainViewModel
 enum class Tab(val label: String, val title: String, val icon: ImageVector) {
     TODAY("Today", "Price Watch", Icons.Outlined.Today),
     PRODUCTS("Products", "Your products", Icons.Outlined.Inventory2),
+    SEARCH("Search", "Search shops", Icons.Outlined.Search),
     SHOPS("Shops", "Shops", Icons.Outlined.Storefront),
 }
 
@@ -100,7 +102,9 @@ fun App(vm: MainViewModel) {
                         onOpen = { openUrl = it.own.url },
                         onShops = { tab = Tab.SHOPS },
                         onSeeAll = { productFilter = Filter.CHEAPER; tab = Tab.PRODUCTS },
+                        onSearch = { tab = Tab.SEARCH },
                     )
+                    tab == Tab.SEARCH -> MarketScreen(state)
                     tab == Tab.PRODUCTS -> ProductsScreen(state, productFilter) { openUrl = it.own.url }
                     else -> ShopsScreen(vm, state)
                 }

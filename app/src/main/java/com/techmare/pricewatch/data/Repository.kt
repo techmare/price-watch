@@ -18,31 +18,38 @@ class Repository(private val context: Context) {
 
     private val dir = File(context.filesDir, "data").apply { mkdirs() }
 
-    /** Fetches fresh files. Returns false when offline; cached files stay usable. */
-    fun refresh(): Boolean {
-        var ok = true
+    enum class Fetch { OK, NOT_READY, OFFLINE }
+
+    /** Fetches fresh files; cached files stay usable when this fails. */
+    fun refresh(): Fetch {
+        var result = Fetch.OK
         for (name in listOf("latest.json", "changes.json", "history.json")) {
-            val bytes = download("$BASE/$name") ?: run { ok = false; null } ?: continue
+            val (code, bytes) = download("$BASE/$name")
+            if (bytes == null) {
+                if (result == Fetch.OK) result = if (code == 404) Fetch.NOT_READY else Fetch.OFFLINE
+                continue
+            }
             File(dir, "$name.tmp").apply { writeBytes(bytes); renameTo(File(dir, name)) }
         }
         historyCache = null
-        return ok
+        return result
     }
 
     fun hasCache() = File(dir, "latest.json").exists()
 
-    private fun download(url: String): ByteArray? = try {
+    private fun download(url: String): Pair<Int, ByteArray?> = try {
         val c = URL("$url?t=${System.currentTimeMillis() / 300_000}").openConnection() as HttpURLConnection
         c.connectTimeout = 15_000
         c.readTimeout = 60_000
         c.setRequestProperty("Accept-Encoding", "gzip")
         try {
-            if (c.responseCode != 200) null else {
+            val code = c.responseCode
+            if (code != 200) code to null else {
                 val stream = if ("gzip".equals(c.contentEncoding, true)) java.util.zip.GZIPInputStream(c.inputStream) else c.inputStream
-                stream.use { it.readBytes() }
+                code to stream.use { it.readBytes() }
             }
         } finally { c.disconnect() }
-    } catch (e: Exception) { null }
+    } catch (e: Exception) { 0 to null }
 
     private fun read(name: String): String? = File(dir, name).takeIf { it.exists() }?.readText()
 

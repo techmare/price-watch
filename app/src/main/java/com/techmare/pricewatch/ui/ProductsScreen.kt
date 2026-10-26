@@ -78,7 +78,7 @@ fun ProductsScreen(state: UiState, initialFilter: Filter, onOpen: (Comparison) -
         }
         if (shown.isEmpty()) {
             Text(
-                if (comps.isEmpty()) "No products yet. Your prices are read from midoxshop.ma each morning."
+                if (comps.isEmpty()) "Your products appear here once your own prices are connected. Until then, use Search to compare competitor prices."
                 else "Nothing here.",
                 Modifier.padding(24.dp), color = c.muted,
             )

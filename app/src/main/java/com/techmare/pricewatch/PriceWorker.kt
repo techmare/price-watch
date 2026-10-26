@@ -32,7 +32,11 @@ class PriceWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     override suspend fun doWork(): Result {
         val repo = Repository(applicationContext)
         val prefs = Prefs(applicationContext)
-        if (!repo.refresh()) return Result.retry()
+        when (repo.refresh()) {
+            Repository.Fetch.OFFLINE -> return Result.retry()
+            Repository.Fetch.NOT_READY -> return Result.success()
+            Repository.Fetch.OK -> {}
+        }
         val snap = repo.snapshot() ?: return Result.success()
         if (snap.generated == prefs.lastNotified) return Result.success()
 
