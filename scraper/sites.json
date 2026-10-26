@@ -1,0 +1,22 @@
+{
+  "own": "midox",
+  "sites": [
+    { "id": "midox", "name": "Midox Shop", "url": "https://www.midoxshop.ma", "mode": "auto", "own": true },
+
+    { "id": "kamerty", "name": "Kamerty", "url": "https://kamerty.ma", "mode": "woo" },
+    { "id": "nextlevelphoto", "name": "Next Level Photo", "url": "https://nextlevelphoto.ma", "mode": "sitemap" },
+    { "id": "fullpix", "name": "Fullpix", "url": "https://fullpix.ma", "mode": "auto" },
+    { "id": "photostore", "name": "Photo Store", "url": "https://www.photostore.ma", "mode": "sitemap" },
+    { "id": "winashop", "name": "Winashop", "url": "https://winashop.com", "mode": "auto" },
+    { "id": "yahyaouishop", "name": "Yahyaoui Shop", "url": "https://yahyaouishop.com", "mode": "auto" },
+
+    { "id": "iris", "name": "Iris", "url": "https://www.iris.ma", "mode": "sitemap", "filter": true },
+    { "id": "mediazone", "name": "Mediazone", "url": "https://www.mediazone.ma", "mode": "sitemap", "filter": true },
+    { "id": "micromagma", "name": "Micromagma", "url": "https://micromagma.ma", "mode": "sitemap", "filter": true },
+    { "id": "gtelstore", "name": "Gtelstore", "url": "https://gtelstore.ma", "mode": "auto", "filter": true },
+    { "id": "coindesprix", "name": "Coin des Prix", "url": "https://www.coindesprix.ma", "mode": "auto", "filter": true },
+    { "id": "digisouk", "name": "Digisouk", "url": "https://digisouk.ma", "mode": "auto", "filter": true },
+    { "id": "zonetech", "name": "Zonetech", "url": "https://zonetech.ma", "mode": "auto", "filter": true },
+    { "id": "yourtech", "name": "Yourtech", "url": "https://www.yourtech.ma", "mode": "shopify", "filter": true }
+  ]
+}
