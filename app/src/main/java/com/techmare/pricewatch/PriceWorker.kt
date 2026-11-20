@@ -22,11 +22,14 @@ import com.techmare.pricewatch.core.Compare
 import com.techmare.pricewatch.core.Position
 import com.techmare.pricewatch.data.Prefs
 import com.techmare.pricewatch.data.Repository
-import java.time.Duration
 import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
 
-/** Each morning: download the new results and say what changed for your products. */
+/**
+ * Every few hours: look for a new daily check and, the first time one arrives, say what changed
+ * for your products. GitHub often runs the check late, so a fixed morning time would report
+ * yesterday's prices. Notifications wait for daytime (8:00 to 22:00).
+ */
 class PriceWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -39,6 +42,8 @@ class PriceWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         }
         val snap = repo.snapshot() ?: return Result.success()
         if (snap.generated == prefs.lastNotified) return Result.success()
+        // night: keep it for the first run after 8:00
+        if (LocalDateTime.now().hour !in 8..21) return Result.success()
 
         val comps = Compare.run(snap, prefs.overrides, prefs.excluded, prefs.threshold.toDouble())
         val matched = comps.flatMap { c -> c.offers.map { it.url } }.toSet()
@@ -69,13 +74,7 @@ class PriceWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         fun schedule(context: Context, enabled: Boolean) {
             val wm = WorkManager.getInstance(context)
             if (!enabled) { wm.cancelUniqueWork(WORK); return }
-            // first run at 9:00 local time, then daily
-            val now = LocalDateTime.now()
-            var next = now.withHour(9).withMinute(0).withSecond(0)
-            if (!next.isAfter(now)) next = next.plusDays(1)
-            val delay = Duration.between(now, next).toMinutes()
-            val req = PeriodicWorkRequestBuilder<PriceWorker>(24, TimeUnit.HOURS)
-                .setInitialDelay(delay, TimeUnit.MINUTES)
+            val req = PeriodicWorkRequestBuilder<PriceWorker>(3, TimeUnit.HOURS, 30, TimeUnit.MINUTES)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
             wm.enqueueUniquePeriodicWork(WORK, ExistingPeriodicWorkPolicy.UPDATE, req)

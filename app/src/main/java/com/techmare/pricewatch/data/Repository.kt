@@ -20,36 +20,51 @@ class Repository(private val context: Context) {
 
     enum class Fetch { OK, NOT_READY, OFFLINE }
 
-    /** Fetches fresh files; cached files stay usable when this fails. */
+    /**
+     * Fetches fresh files; cached files stay usable when this fails.
+     * Files that haven't changed since the last download aren't downloaded again (ETag / 304).
+     */
     fun refresh(): Fetch {
         var result = Fetch.OK
         for (name in listOf("latest.json", "changes.json", "history.json")) {
-            val (code, bytes) = download("$BASE/$name")
-            if (bytes == null) {
-                if (result == Fetch.OK) result = if (code == 404) Fetch.NOT_READY else Fetch.OFFLINE
-                continue
+            val file = File(dir, name)
+            val tagFile = File(dir, "$name.etag")
+            val etag = tagFile.takeIf { it.exists() && file.exists() }?.readText()
+            val r = download("$BASE/$name", etag)
+            when {
+                r.code == 304 -> continue
+                r.bytes == null -> {
+                    if (result == Fetch.OK) result = if (r.code == 404) Fetch.NOT_READY else Fetch.OFFLINE
+                    continue
+                }
             }
-            File(dir, "$name.tmp").apply { writeBytes(bytes); renameTo(File(dir, name)) }
+            File(dir, "$name.tmp").apply { writeBytes(r.bytes!!); renameTo(file) }
+            if (r.etag != null) tagFile.writeText(r.etag) else tagFile.delete()
+            if (name == "history.json") historyCache = null
         }
-        historyCache = null
         return result
     }
 
     fun hasCache() = File(dir, "latest.json").exists()
 
-    private fun download(url: String): Pair<Int, ByteArray?> = try {
-        val c = URL("$url?t=${System.currentTimeMillis() / 300_000}").openConnection() as HttpURLConnection
+    private class Download(val code: Int, val bytes: ByteArray?, val etag: String?)
+
+    private fun download(url: String, etag: String?): Download = try {
+        val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 15_000
         c.readTimeout = 60_000
+        c.useCaches = false
         c.setRequestProperty("Accept-Encoding", "gzip")
+        c.setRequestProperty("Cache-Control", "no-cache")
+        if (etag != null) c.setRequestProperty("If-None-Match", etag)
         try {
             val code = c.responseCode
-            if (code != 200) code to null else {
+            if (code != 200) Download(code, null, null) else {
                 val stream = if ("gzip".equals(c.contentEncoding, true)) java.util.zip.GZIPInputStream(c.inputStream) else c.inputStream
-                code to stream.use { it.readBytes() }
+                Download(code, stream.use { it.readBytes() }, c.getHeaderField("ETag"))
             }
         } finally { c.disconnect() }
-    } catch (e: Exception) { 0 to null }
+    } catch (e: Exception) { Download(0, null, null) }
 
     private fun read(name: String): String? = File(dir, name).takeIf { it.exists() }?.readText()
 

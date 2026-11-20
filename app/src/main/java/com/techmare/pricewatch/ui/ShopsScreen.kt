@@ -72,8 +72,8 @@ fun ShopsScreen(vm: MainViewModel, state: UiState) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Morning notification", style = MaterialTheme.typography.bodyLarge, color = c.ink)
-                Text("At 9:00, when a competitor's price changes on one of your products.", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                Text("Price change notifications", style = MaterialTheme.typography.bodyLarge, color = c.ink)
+                Text("When the new daily prices arrive and a competitor changed a price on one of your products. Never at night.", style = MaterialTheme.typography.bodySmall, color = c.muted)
             }
             Switch(
                 checked = state.notify, onCheckedChange = null,
@@ -82,7 +82,7 @@ fun ShopsScreen(vm: MainViewModel, state: UiState) {
         }
         Spacer(Modifier.height(16.dp))
         Text(
-            "Prices are checked every morning at about 6:15 from each shop's public product pages.",
+            "Prices are checked once a day, overnight, from each shop's public product pages. Shops that take too long are skipped and keep their last prices.",
             style = MaterialTheme.typography.bodySmall, color = c.muted,
         )
         Spacer(Modifier.height(16.dp))

@@ -33,6 +33,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 UA = "MidoxPriceWatch/1.0 (daily price check; +https://www.midoxshop.ma)"
 DELAY = float(os.environ.get("PW_DELAY", "1.2"))      # seconds between requests to one site
+SITE_BUDGET = float(os.environ.get("PW_SITE_MINUTES", "70")) * 60  # a slow or dead shop can't hold up the whole check
+
+
+class SiteTimeout(BaseException):
+    """Raised when one shop has used its time budget. BaseException so per-page `except Exception` can't swallow it."""
 MAX_PAGES = int(os.environ.get("PW_MAX_PAGES", "1500"))  # product pages per sitemap site
 HISTORY_DAYS = 180
 
@@ -54,6 +59,7 @@ GEAR_WORDS = [
 
 class Http:
     def __init__(self):
+        self.deadline = time.time() + SITE_BUDGET
         self.last: dict[str, float] = {}
         self.robots: dict[str, urllib.robotparser.RobotFileParser | None] = {}
         self.robots_text: dict[str, str] = {}
@@ -66,6 +72,8 @@ class Http:
         self.last[host] = time.time()
 
     def raw(self, url: str, accept: str = "*/*", check_robots: bool = True, timeout: int = 30) -> tuple[int, bytes, str]:
+        if time.time() > self.deadline:
+            raise SiteTimeout(f"stopped after {int(SITE_BUDGET // 60)} minutes")
         host = urllib.parse.urlsplit(url).netloc
         if check_robots and not self.allowed(url):
             return 999, b"", "robots"
@@ -502,7 +510,7 @@ def main():
             products, method = scrape_site(http, site, log)
             log(f"OK {len(products)} products via {method} in {int(time.time() - t0)}s")
             return site, products, method, None
-        except Exception as e:
+        except (Exception, SiteTimeout) as e:
             log(f"FAILED {e}")
             return site, None, None, str(e)
 

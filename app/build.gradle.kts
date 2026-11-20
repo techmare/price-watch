@@ -18,13 +18,17 @@ android {
         versionName = "1.0.$buildNumber"
     }
 
-    // One fixed key so every new APK installs over the previous one.
+    // One fixed private key so every new APK installs over the previous one.
+    // It lives in the repo's GitHub secrets, never in the code: the build workflow decodes it
+    // and passes its path and password here.
+    val keystore = System.getenv("SIGNING_KEYSTORE")?.takeIf { it.isNotBlank() }
     signingConfigs {
-        create("shop") {
-            storeFile = file("shop.keystore")
-            storePassword = "techmare"
-            keyAlias = "shop"
-            keyPassword = "techmare"
+        if (keystore != null) create("release") {
+            storeFile = file(keystore)
+            storePassword = System.getenv("SIGNING_PASSWORD")
+            keyAlias = System.getenv("SIGNING_KEY_ALIAS") ?: "pricewatch"
+            keyPassword = System.getenv("SIGNING_PASSWORD")
+            storeType = "PKCS12"
         }
     }
 
@@ -33,10 +37,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("shop")
-        }
-        debug {
-            signingConfig = signingConfigs.getByName("shop")
+            if (keystore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
 

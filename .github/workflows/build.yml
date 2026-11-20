@@ -19,11 +19,26 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$SIGNING_PASSWORD" ]; then
+            echo "::error::Add the SIGNING_KEYSTORE_BASE64 and SIGNING_PASSWORD secrets in Settings > Secrets and variables > Actions, then run this workflow again."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | tr -d ' \n\r' | base64 -d > "$RUNNER_TEMP/release.p12"
+          echo "SIGNING_KEYSTORE=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
       - name: Test and build
+        env:
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon testDebugUnitTest assembleRelease
           cp app/build/outputs/apk/release/app-release.apk PriceWatch.apk
+          # refuse to publish an APK that isn't signed with the private key
+          "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner" verify PriceWatch.apk
       - uses: actions/upload-artifact@v4
         with:
           name: PriceWatch-apk
