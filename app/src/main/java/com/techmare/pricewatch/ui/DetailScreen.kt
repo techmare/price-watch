@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.techmare.pricewatch.MainViewModel
 import com.techmare.pricewatch.core.Comparison
+import com.techmare.pricewatch.core.Matcher
 import com.techmare.pricewatch.core.Offer
 import com.techmare.pricewatch.core.Position
 import com.techmare.pricewatch.core.PricePoint
@@ -68,7 +69,7 @@ fun DetailScreen(vm: MainViewModel, cmp: Comparison, threshold: Int) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Panel {
-            Text(cmp.own.name, style = MaterialTheme.typography.titleLarge, color = c.panelText)
+            Text(Matcher.displayName(cmp.own.name), style = MaterialTheme.typography.titleLarge, color = c.panelText)
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(dh(cmp.own.price), style = MaterialTheme.typography.headlineMedium, color = c.panelText)
@@ -109,8 +110,22 @@ fun DetailScreen(vm: MainViewModel, cmp: Comparison, threshold: Int) {
                 )
                 if (i < cmp.offers.lastIndex) HorizontalDivider(color = c.rule)
             }
-        } else {
+        } else if (cmp.possible.isEmpty()) {
             Note("No other shop seems to sell this, or their product title is worded too differently to match automatically.")
+        }
+
+        if (cmp.possible.isNotEmpty()) {
+            SectionTitle("Possible matches", "${cmp.possible.size}")
+            Note("Same model, but the price is far from yours (a bundle, a used item or a typo?). Confirm the ones that really are this product.")
+            cmp.possible.forEachIndexed { i, o ->
+                PossibleRow(
+                    o, diff = o.price - cmp.own.price,
+                    onOpen = { openUrl(context, o.url) },
+                    onConfirm = { vm.confirm(cmp.own.url, o) },
+                    onReject = { vm.reject(cmp.own.url, o) },
+                )
+                if (i < cmp.possible.lastIndex) HorizontalDivider(color = c.rule)
+            }
         }
         OutlinedButton(onClick = { searching = true }, modifier = Modifier.fillMaxWidth()) {
             Text(if (cmp.offers.isEmpty()) "Find it at another shop" else "Add a missing shop")
@@ -175,7 +190,27 @@ private fun OfferRow(o: Offer, color: Color?, diff: Double, threshold: Int, auto
                 Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
                 color = if (o.inStock) c.muted else c.mid,
             )
-            if (auto) TextButton(onClick = onReject) { Text("Not this product") }
+            TextButton(onClick = onReject) { Text(if (auto) "Not this product" else "Remove match") }
+        }
+    }
+}
+
+@Composable
+private fun PossibleRow(o: Offer, diff: Double, onOpen: () -> Unit, onConfirm: () -> Unit, onReject: () -> Unit) {
+    val c = LocalAppColors.current
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(o.siteName, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = c.ink)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(dh(o.price), style = MaterialTheme.typography.titleSmall, color = c.ink)
+                Text(if (diff < 0) "${dh(-diff)} cheaper than you" else "${dh(diff)} more than you", style = MaterialTheme.typography.bodySmall, color = c.muted)
+            }
+            IconButton(onClick = onOpen) { Icon(Icons.AutoMirrored.Outlined.OpenInNew, "Open page", tint = c.muted) }
+        }
+        Text(o.name, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = onReject) { Text("Not this product") }
+            TextButton(onClick = onConfirm) { Text("Same product") }
         }
     }
 }

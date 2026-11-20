@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.techmare.pricewatch.UiState
 import com.techmare.pricewatch.core.Comparison
+import com.techmare.pricewatch.core.Matcher
 import com.techmare.pricewatch.core.Position
 
 @Composable
@@ -96,7 +97,7 @@ fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Uni
                 Spacer(Modifier.height(14.dp))
                 Column(Modifier.fillMaxWidth().clickable { onOpen(cmp) }) {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(cmp.own.name, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = c.panelText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Matcher.displayName(cmp.own.name), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = c.panelText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(signedDh(cmp.diff ?: 0.0), style = MaterialTheme.typography.titleSmall, color = c.high)
                     }
                     PriceLadder(cmp)
@@ -123,7 +124,7 @@ fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Uni
                     Icon(if (down) Icons.Outlined.ArrowDownward else Icons.Outlined.ArrowUpward, null, Modifier.size(18.dp), tint = if (down) c.high else c.ok)
                     Spacer(Modifier.size(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(cmp.own.name, style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Matcher.displayName(cmp.own.name), style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("$shop: ${ch.old?.let { dh(it) } ?: "?"} to ${ch.new?.let { dh(it) } ?: "?"}", style = MaterialTheme.typography.bodySmall, color = c.muted)
                     }
                 }
@@ -137,7 +138,7 @@ fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Uni
             outs.take(10).forEach { ch ->
                 val cmp = byUrl.getValue(ch.url)
                 val shop = snap.sites.firstOrNull { it.id == ch.siteId }?.name ?: ch.siteId
-                ProductLine(cmp.own.name, "Sold out at $shop", dh(cmp.own.price), c.ink)
+                ProductLine(Matcher.displayName(cmp.own.name), "Sold out at $shop", dh(cmp.own.price), c.ink)
             }
         }
 

@@ -92,7 +92,7 @@ fun ProductsScreen(state: UiState, initialFilter: Filter, onOpen: (Comparison) -
                 }
                 Column(Modifier.clickable { onOpen(cmp) }) {
                     ProductLine(
-                        name = cmp.own.name, sub = sub,
+                        name = Matcher.displayName(cmp.own.name), sub = sub,
                         right = dh(cmp.own.price), rightColor = c.ink,
                         rightSub = cmp.diff?.let { if (cmp.position == Position.SAME) "same" else signedDh(it) },
                         rightSubColor = diffColor(cmp.diff, state.threshold),

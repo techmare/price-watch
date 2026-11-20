@@ -48,6 +48,8 @@ data class Comparison(
     /** Your price minus the cheapest in-stock competitor (positive = you're more expensive). */
     val diff: Double?,
     val autoMatched: Set<String>,
+    /** Same model code but a price too far from yours to trust: shown for you to confirm, not counted. */
+    val possible: List<Offer> = emptyList(),
 ) {
     val best: Offer? get() = offers.firstOrNull { it.inStock } ?: offers.firstOrNull()
 }
@@ -60,6 +62,9 @@ object Compare {
         excludedSites: Set<String> = emptySet(),
         threshold: Double = 20.0,
         includeUsed: Boolean = false,
+        /** An automatic match must cost between half and double your price; others become "possible". */
+        minRatio: Double = 0.5,
+        maxRatio: Double = 2.0,
     ): List<Comparison> {
         val own = snapshot.own ?: return emptyList()
         val sites = snapshot.competitors.filter { it.id !in excludedSites }
@@ -69,7 +74,7 @@ object Compare {
         for (s in sites) for (o in s.products) {
             byUrl[o.url] = o
             val k = Matcher.key(o.name)
-            if (k.usable) index.getOrPut(k.models) { ArrayList() } += o to k
+            if (k.usable) index.getOrPut(k.indexKey) { ArrayList() } += o to k
         }
 
         return own.products.mapNotNull { mine ->
@@ -79,10 +84,17 @@ object Compare {
             val confirmed = overrides.confirmed[mine.url].orEmpty()
 
             val perSite = HashMap<String, Pair<Offer, Double>>()
+            val possiblePerSite = HashMap<String, Offer>()
             val auto = HashSet<String>()
-            for ((o, k) in index[mk.models].orEmpty()) {
-                if (o.url in rejected) continue
+            for ((o, k) in index[mk.indexKey].orEmpty()) {
+                if (o.url in rejected || o.url in confirmed) continue
                 val sc = Matcher.score(mk, k) ?: continue
+                val ratio = o.price / mine.price
+                if (ratio < minRatio || ratio > maxRatio) {
+                    val cur = possiblePerSite[o.siteId]
+                    if (cur == null || kotlin.math.abs(o.price - mine.price) < kotlin.math.abs(cur.price - mine.price)) possiblePerSite[o.siteId] = o
+                    continue
+                }
                 val cur = perSite[o.siteId]
                 if (cur == null || sc > cur.second || (sc == cur.second && o.price < cur.first.price)) {
                     perSite[o.siteId] = o to sc
@@ -95,6 +107,7 @@ object Compare {
                 perSite[o.siteId] = o to 2.0
             }
             val offers = perSite.values.map { it.first }.sortedWith(compareBy({ !it.inStock }, { it.price }))
+            val possible = possiblePerSite.filterKeys { it !in perSite }.values.sortedBy { it.price }
             val best = offers.firstOrNull { it.inStock } ?: offers.firstOrNull()
             val diff = best?.let { mine.price - it.price }
             val pos = when {
@@ -103,7 +116,7 @@ object Compare {
                 diff < -threshold -> Position.CHEAPEST
                 else -> Position.SAME
             }
-            Comparison(mine, offers, pos, diff, auto - confirmed)
+            Comparison(mine, offers, pos, diff, auto - confirmed, possible)
         }
     }
 
