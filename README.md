@@ -16,3 +16,7 @@ Edit `scraper/sites.json` to add or remove a shop. Run the check by hand from th
 The APK is signed with a private key kept in the repository's Actions secrets
 (`SIGNING_KEYSTORE_BASE64`, `SIGNING_PASSWORD`). Never commit a keystore: if this key changes,
 installed apps can't update and have to be uninstalled first.
+
+## Screenshots of every screen
+`./gradlew testDebugUnitTest -Pscreens --tests '*ScreenTour*'` opens the app on the JVM (Robolectric) with the
+data in `data/`, walks through every screen and saves screenshots to `app/build/screens/`.

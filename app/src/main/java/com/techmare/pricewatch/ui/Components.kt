@@ -62,7 +62,7 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> 
  * Your price is the yellow marker; competitors are dots (hollow when out of stock).
  */
 @Composable
-fun PriceLadder(comparison: Comparison, onDark: Boolean = true, height: Int = 26) {
+fun PriceLadder(comparison: Comparison, onDark: Boolean = true, height: Int = 26, colors: List<Color> = emptyList()) {
     val c = LocalAppColors.current
     val prices = comparison.offers.map { it.price } + comparison.own.price
     val min = prices.min()
@@ -75,10 +75,11 @@ fun PriceLadder(comparison: Comparison, onDark: Boolean = true, height: Int = 26
         val y = size.height / 2
         fun x(p: Double) = pad + if (max == min) w / 2 else ((p - min) / (max - min)).toFloat() * w
         drawRoundRect(track, Offset(pad, y - 1.5.dp.toPx()), Size(w, 3.dp.toPx()), CornerRadius(2.dp.toPx()))
-        for (o in comparison.offers) {
+        comparison.offers.forEachIndexed { i, o ->
             val r = 5.dp.toPx()
-            if (o.inStock) drawCircle(dot, r, Offset(x(o.price), y))
-            else drawCircle(dot, r - 1.dp.toPx(), Offset(x(o.price), y), style = Stroke(1.5.dp.toPx()))
+            val col = colors.getOrNull(i) ?: dot
+            if (o.inStock) drawCircle(col, r, Offset(x(o.price), y))
+            else drawCircle(col, r - 1.dp.toPx(), Offset(x(o.price), y), style = Stroke(1.5.dp.toPx()))
         }
         val ox = x(comparison.own.price)
         drawRoundRect(c.signal, Offset(ox - 3.dp.toPx(), y - 10.dp.toPx()), Size(6.dp.toPx(), 20.dp.toPx()), CornerRadius(3.dp.toPx()))

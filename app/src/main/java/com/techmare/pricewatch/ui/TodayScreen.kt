@@ -53,11 +53,14 @@ fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Uni
     }
 
     val comps = state.comparisons
-    val matched = comps.filter { it.position != Position.NO_MATCH }
+    val matched = comps.filter { it.offers.isNotEmpty() }
     val cheaper = comps.filter { it.position == Position.CHEAPER_ELSEWHERE }.sortedByDescending { it.diff ?: 0.0 }
     val byUrl = comps.flatMap { cmp -> cmp.offers.map { it.url to cmp } }.toMap()
     val relevantChanges = state.changes.filter { it.url in byUrl && it.type in setOf("drop", "rise") }
+    // only worth posting when nobody else has it in stock
     val outs = state.changes.filter { it.url in byUrl && it.type == "out" }
+        .filter { ch -> byUrl.getValue(ch.url).offers.none { it.inStock } }
+        .distinctBy { byUrl.getValue(it.url).own.url }
     val shops = snap.competitors.filter { it.id !in state.excluded }
     val failed = shops.filter { !it.ok }
     val ownMissing = snap.own?.products.isNullOrEmpty()
@@ -90,14 +93,14 @@ fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Uni
                 style = MaterialTheme.typography.headlineMedium, color = c.panelText,
             )
             Text(
-                "Out of ${matched.size} products found at ${shops.size} shops",
+                "Out of ${matched.size} products found at ${shops.count { it.ok }} shops",
                 style = MaterialTheme.typography.bodyMedium, color = c.panelMuted,
             )
             cheaper.take(4).forEach { cmp ->
                 Spacer(Modifier.height(14.dp))
                 Column(Modifier.fillMaxWidth().clickable { onOpen(cmp) }) {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(Matcher.displayName(cmp.own.name), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = c.panelText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Matcher.shortName(cmp.own.name), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = c.panelText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(signedDh(cmp.diff ?: 0.0), style = MaterialTheme.typography.titleSmall, color = c.high)
                     }
                     PriceLadder(cmp)
@@ -124,7 +127,7 @@ fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Uni
                     Icon(if (down) Icons.Outlined.ArrowDownward else Icons.Outlined.ArrowUpward, null, Modifier.size(18.dp), tint = if (down) c.high else c.ok)
                     Spacer(Modifier.size(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(Matcher.displayName(cmp.own.name), style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Matcher.shortName(cmp.own.name), style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("$shop: ${ch.old?.let { dh(it) } ?: "?"} to ${ch.new?.let { dh(it) } ?: "?"}", style = MaterialTheme.typography.bodySmall, color = c.muted)
                     }
                 }
@@ -133,12 +136,12 @@ fun TodayScreen(state: UiState, onOpen: (Comparison) -> Unit, onShops: () -> Uni
         }
 
         if (outs.isNotEmpty()) {
-            SectionTitle("Out of stock at competitors")
-            Note("A good moment to post these: buyers looking for them won't find them elsewhere.")
+            SectionTitle("Only you have these in stock")
+            Note("They just sold out everywhere else: a good moment to post them.")
             outs.take(10).forEach { ch ->
                 val cmp = byUrl.getValue(ch.url)
                 val shop = snap.sites.firstOrNull { it.id == ch.siteId }?.name ?: ch.siteId
-                ProductLine(Matcher.displayName(cmp.own.name), "Sold out at $shop", dh(cmp.own.price), c.ink)
+                ProductLine(Matcher.shortName(cmp.own.name), "Sold out at $shop", dh(cmp.own.price), c.ink)
             }
         }
 

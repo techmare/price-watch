@@ -58,7 +58,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val result = withContext(Dispatchers.Default) {
             val snap = try { repo.snapshot() } catch (e: Exception) { null }
             val changes = try { repo.changes() } catch (e: Exception) { emptyList() }
-            val comps = snap?.let { Compare.run(it, prefs.overrides, prefs.excluded, prefs.threshold.toDouble()) }.orEmpty()
+            // a bad title must never leave the app spinning forever
+            val comps = try {
+                snap?.let { Compare.run(it, prefs.overrides, prefs.excluded, prefs.threshold.toDouble()) }.orEmpty()
+            } catch (e: Exception) { android.util.Log.e("PriceWatch", "compare failed", e); emptyList() }
             Triple(snap, comps, changes)
         }
         _state.value = s.copy(

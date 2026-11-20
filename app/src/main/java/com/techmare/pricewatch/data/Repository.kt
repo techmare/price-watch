@@ -122,7 +122,8 @@ class Repository(private val context: Context) {
     }
 
     companion object {
-        const val BASE = "https://raw.githubusercontent.com/techmare/price-watch/main/data"
+        /** Overridable so screenshot tests can run without the network. */
+        val BASE: String = System.getProperty("pricewatch.base") ?: "https://raw.githubusercontent.com/techmare/price-watch/main/data"
     }
 }
 

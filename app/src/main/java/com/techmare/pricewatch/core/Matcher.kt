@@ -98,13 +98,24 @@ object Matcher {
         Regex("(^|[^a-z0-9])(" + words.joinToString("|") { Regex.escape(it) } + ")([^a-z0-9]|$)")
     }
 
+    /** Titles are matched thousands of times: patterns are compiled once and keys remembered. */
+    private val patterns = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+    private fun rx(p: String): Regex = patterns.getOrPut(p) { Regex(p) }
+    private val keys = java.util.concurrent.ConcurrentHashMap<String, ProductKey>()
+    private val BRAND_RX = Regex(
+        "(^|[^a-z0-9])(" + (BRANDS + BRAND_ALIASES.keys).sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) } + ")(?=[^a-z0-9]|$)"
+    )
+
+    private val PRIX_MAROC = Regex("\\s*[-–]?\\s*prix\\s+maroc\\b", RegexOption.IGNORE_CASE)
+    private val MARKS = Regex("\\p{Mn}+")
+    private val NEUF_TAIL = Regex("\\s+[-–]\\s+(neuf|new)\\s*$", RegexOption.IGNORE_CASE)
     private val USED = Regex("\\b(occasion|occas|utilise|used|seconde main|reconditionne|refurb\\w*)\\b")
     private val BODY = Regex("\\b(boitier|body|nu|seul|only)\\b")
     private val LENS_RANGE = Regex("(\\d{1,3})\\s*[-–]\\s*(\\d{1,3})\\s*(mm)?")
     private val ROMAN = mapOf("ii" to 2, "iii" to 3, "iv" to 4, "vi" to 6)
 
     fun normalize(s: String): String {
-        var t = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+        var t = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(MARKS, "")
         t = t.replace('α', 'a').replace('×', 'x').replace("ø", "o").replace('‑', '-').replace('’', '\'')
         return t
     }
@@ -112,44 +123,68 @@ object Matcher {
     /** A product title without the shop's SEO tail: "Sony A7 V – Appareil photo … | Midox Shop Maroc" -> "Sony A7 V – Appareil photo …". */
     fun displayName(name: String): String = name
         .substringBefore(" | ")
-        .replace(Regex("\\s+[-–]\\s+(neuf|new)\\s*$", RegexOption.IGNORE_CASE), "")
+        .replace(PRIX_MAROC, "")
+        .replace(NEUF_TAIL, "")
         .trim()
 
-    fun key(name: String): ProductKey {
+    /** For lists: just the product, without the SEO description after " – ". Matching keeps using the full title. */
+    private val NOT_CAMERA = setOf(
+        "jbl", "corsair", "nintendo", "playstation", "xiaomi", "samsung", "apple", "logitech", "razer", "hyperx",
+        "ugreen", "orico", "anker", "baseus", "imou", "goui", "kingston",
+    )
+    private val GEAR_WORDS = Regex(
+        "\\b(appareil photo|camera|objectif|lens|hybride|reflex|gimbal|stabilisateur|trepied|tripod|micro|microphone|" +
+            "flash|softbox|eclairage|led video|video light|monopod|cage|carte sd|sd card|cfexpress|drone|webcam|ring light|reflecteur)\\b"
+    )
+
+    /** Camera, audio, lighting and video gear, as opposed to the cables, games and PC parts some shops also sell. */
+    fun isGear(name: String): Boolean {
+        val k = key(name)
+        if (k.brand != null) return k.brand !in NOT_CAMERA
+        return GEAR_WORDS.containsMatchIn(normalize(name))
+    }
+
+    fun shortName(name: String): String {
+        val d = displayName(name)
+        val head = d.split(" – ", " — ").first().trim()
+        return if (head.length >= 4) head else d
+    }
+
+    fun key(name: String): ProductKey = keys.getOrPut(name) { computeKey(name) }
+
+    private fun computeKey(name: String): ProductKey {
         var s = normalize(displayName(name))
         val used = USED.containsMatchIn(s)
         val body = BODY.containsMatchIn(s)
 
         // "NT-USB+", "VideoMic Pro+": a glued plus is part of the name
-        s = s.replace(Regex("(?<=[a-z0-9])\\+(?=\\s|$)"), " plus")
+        s = s.replace(rx("(?<=[a-z0-9])\\+(?=\\s|$)"), " plus")
         val accessoryEarly = ACCESSORY_RX.filterKeys { it == "drive" }.filterValues { it.containsMatchIn(s) }.keys
         // transmitters before the parentheses go: "(2 TX + 1 RX)", "2 émetteurs", "Dual"
-        val tx = Regex("\\b(\\d)\\s*(tx|emetteurs?|transmitters?)\\b").find(s)?.groupValues?.get(1)?.toInt()
-            ?: when { Regex("\\b(dual|duo)\\b").containsMatchIn(s) -> 2; Regex("\\b(single|solo)\\b").containsMatchIn(s) -> 1; else -> null }
-        s = s.replace(Regex("\\b(dual|duo|single|solo)\\b"), " ")
+        val tx = rx("\\b(\\d)\\s*(tx|emetteurs?|transmitters?)\\b").find(s)?.groupValues?.get(1)?.toInt()
+            ?: when { rx("\\b(dual|duo)\\b").containsMatchIn(s) -> 2; rx("\\b(single|solo)\\b").containsMatchIn(s) -> 1; else -> null }
+        s = s.replace(rx("\\b(dual|duo|single|solo)\\b"), " ")
         // "Essentials Kit", "Pack Essentiel", "Bundle": sold with extras
-        s = s.replace(Regex("\\b(essentials?|essentiel|bundle|pack complet)\\b"), " bundle ")
+        s = s.replace(rx("\\b(essentials?|essentiel|bundle|pack complet)\\b"), " bundle ")
         // lens mount, read before "rf"/"ef" are dropped as noise
-        val mount = Regex("\\b(rf-?s|ef-?s|ef-?m|rf|ef)(?=[\\s\\d]|$)").find(s)?.groupValues?.get(1)?.replace("-", "")
+        val mount = rx("\\b(rf-?s|ef-?s|ef-?m|rf|ef)(?=[\\s\\d]|$)").find(s)?.groupValues?.get(1)?.replace("-", "")
 
         // parentheses hold mounts "(C,N,S)", SKUs "(SEL2470GM)", contents "(2TX+1RX)": not part of the identity
-        s = s.replace(Regex("\\([^)]*\\)"), " ")
+        s = s.replace(rx("\\([^)]*\\)"), " ")
 
-        s = s.replace(Regex("\\bmicro\\s*-?\\s*sd(xc|hc)?\\b"), " microsd ")
+        s = s.replace(rx("\\bmicro\\s*-?\\s*sd(xc|hc)?\\b"), " microsd ")
         // mount suffixes on codes: "x2t-s", "v1-c", "ad200 for sony" are the same product for each system
-        s = s.replace(Regex("\\b([a-z]+\\d+[a-z]*)-(c|n|s|f|o|sony|canon|nikon|fuji)\\b")) { it.groupValues[1] }
+        s = s.replace(rx("\\b([a-z]+\\d+[a-z]*)-(c|n|s|f|o|sony|canon|nikon|fuji)\\b")) { it.groupValues[1] }
 
         // what's sold with it: "Nikon ZR + SmallRig cage" is a bundle, "Canon R50 + 18-45mm" is a kit
-        val plusParts = s.split(Regex("\\s\\+\\s|\\s\\+|\\+\\s"))
-        val bundle = plusParts.drop(1).any { !LENS_RANGE.containsMatchIn(it) && !Regex("^\\s*\\d+\\s*mm").containsMatchIn(it) }
+        val plusParts = s.split(rx("\\s\\+\\s|\\s\\+|\\+\\s"))
+        val bundle = plusParts.drop(1).any { !LENS_RANGE.containsMatchIn(it) && !rx("^\\s*\\d+\\s*mm").containsMatchIn(it) }
         // accessory words count only in the main part, not in "... avec sac" or "+ batterie"
-        val head = plusParts.first().split(Regex("\\b(avec|with|inclus|incl)\\b")).first()
+        val head = plusParts.first().split(rx("\\b(avec|with|inclus|incl)\\b")).first()
         val accessory = ACCESSORY_RX.filterValues { it.containsMatchIn(head) }.keys + accessoryEarly
 
         // brand: whichever known brand comes first in the title
-        val brand = (BRANDS.map { it to it } + BRAND_ALIASES.toList())
-            .mapNotNull { (word, real) -> Regex("(^|[^a-z0-9])${Regex.escape(word)}([^a-z0-9]|$)").find(s)?.let { it.range.first to real } }
-            .minByOrNull { it.first }?.second
+        val brand = BRAND_RX.find(s)?.groupValues?.get(2)?.let { BRAND_ALIASES[it] ?: it }
 
         // lens range before tokenising
         var lens: String? = null
@@ -159,48 +194,48 @@ object Matcher {
         }
 
         // Sony codes: ilce-7m4 -> a7 mk4, ilce-6400 -> a6400
-        s = s.replace(Regex("ilce-?(\\d)([a-z]*)m(\\d)\\b")) { "a${it.groupValues[1]}${it.groupValues[2]} mk${it.groupValues[3]}" }
-        s = s.replace(Regex("ilce-?(\\d+[a-z]*)")) { "a${it.groupValues[1]}" }
-        s = s.replace(Regex("\\balpha\\s*(\\d)")) { "a${it.groupValues[1]}" }
+        s = s.replace(rx("ilce-?(\\d)([a-z]*)m(\\d)\\b")) { "a${it.groupValues[1]}${it.groupValues[2]} mk${it.groupValues[3]}" }
+        s = s.replace(rx("ilce-?(\\d+[a-z]*)")) { "a${it.groupValues[1]}" }
+        s = s.replace(rx("\\balpha\\s*(\\d)")) { "a${it.groupValues[1]}" }
         // "a7 iv", "a7iv", "a7m4", "a7r v"
-        s = s.replace(Regex("\\b(a\\d[a-z]?)\\s*(m)?(iv|iii|ii|vi|v|i)\\b")) { "${it.groupValues[1]} ${roman(it.groupValues[3])}" }
-        s = s.replace(Regex("\\b(a\\d[a-z]?)m(\\d)\\b")) { "${it.groupValues[1]} mk${it.groupValues[2]}" }
+        s = s.replace(rx("\\b(a\\d[a-z]?)\\s*(m)?(iv|iii|ii|vi|v|i)\\b")) { "${it.groupValues[1]} ${roman(it.groupValues[3])}" }
+        s = s.replace(rx("\\b(a\\d[a-z]?)m(\\d)\\b")) { "${it.groupValues[1]} mk${it.groupValues[2]}" }
         // "mark iv", "mk ii", "mkii", "mk2", "mark 2"
-        s = s.replace(Regex("\\b(mark|mk)\\s*(iv|iii|ii|vi|v|i)\\b")) { roman(it.groupValues[2]) }
-        s = s.replace(Regex("\\b(mark|mk)\\s*(\\d)\\b")) { "mk${it.groupValues[2]}" }
+        s = s.replace(rx("\\b(mark|mk)\\s*(iv|iii|ii|vi|v|i)\\b")) { roman(it.groupValues[2]) }
+        s = s.replace(rx("\\b(mark|mk)\\s*(\\d)\\b")) { "mk${it.groupValues[2]}" }
         // roman numeral glued to a code: "sl60iid" -> "sl60 mk2 d", "ad200pro ii" handled below
-        s = s.replace(Regex("\\b([a-z]+\\d+)(iv|iii|ii)([a-z]{0,2})\\b")) { "${it.groupValues[1]} ${roman(it.groupValues[2])} ${it.groupValues[3]}" }
+        s = s.replace(rx("\\b([a-z]+\\d+)(iv|iii|ii)([a-z]{0,2})\\b")) { "${it.groupValues[1]} ${roman(it.groupValues[2])} ${it.groupValues[3]}" }
         // a variant glued to a code: "ad200pro" -> "ad200 pro", "sl60bi" -> "sl60 bi"
-        s = s.replace(Regex("\\b([a-z]+\\d+)(pro|max|mini|plus|ultra|lite|bi|d)\\b")) { "${it.groupValues[1]} ${it.groupValues[2]}" }
+        s = s.replace(rx("\\b([a-z]+\\d+)(pro|max|mini|plus|ultra|lite|bi|d)\\b")) { "${it.groupValues[1]} ${it.groupValues[2]}" }
         // a standalone roman numeral is a generation: "go ii", "gm ii", "pro ii", "dg dn ii"
         // after a code it's a mark ("s5 ii" -> "s5 mk2"), after a word it's a number ("go ii" -> "go 2", joined below)
-        s = s.replace(Regex("\\b([a-z][a-z0-9]*\\d[a-z0-9]*)\\s+(iv|iii|ii|vi|v)\\b")) { it.groupValues[1] + " " + roman(it.groupValues[2]) }
-        s = s.replace(Regex("(?<=[a-z])\\s+(iv|iii|ii|vi)\\b")) { " " + ROMAN.getValue(it.groupValues[1]) }
+        s = s.replace(rx("\\b([a-z][a-z0-9]*\\d[a-z0-9]*)\\s+(iv|iii|ii|vi|v)\\b")) { it.groupValues[1] + " " + roman(it.groupValues[2]) }
+        s = s.replace(rx("(?<=[a-z])\\s+(iv|iii|ii|vi)\\b")) { " " + ROMAN.getValue(it.groupValues[1]) }
         // join letter-dash-digit codes: x-t50 -> xt50, zv-e10 -> zve10, np-fw50 -> npfw50
-        s = s.replace(Regex("\\b([a-z]{1,3})-([a-z]{0,3}\\d+[a-z]*)\\b")) { it.groupValues[1] + it.groupValues[2] }
-        s = s.replace(Regex("\\b([a-z]{1,3})-([a-z]{1,2})\\b")) { it.groupValues[1] + it.groupValues[2] }
+        s = s.replace(rx("\\b([a-z]{1,3})-([a-z]{0,3}\\d+[a-z]*)\\b")) { it.groupValues[1] + it.groupValues[2] }
+        s = s.replace(rx("\\b([a-z]{1,3})-([a-z]{1,2})\\b")) { it.groupValues[1] + it.groupValues[2] }
         // apertures: "f/2.8", "F4.5-6.3" -> "f2.8" (widest only)
-        s = s.replace(Regex("(\\d),(\\d)")) { "${it.groupValues[1]}.${it.groupValues[2]}" }
+        s = s.replace(rx("(\\d),(\\d)")) { "${it.groupValues[1]}.${it.groupValues[2]}" }
         var aperture: String? = null
-        s = s.replace(Regex("\\bf\\s*/?\\s*(\\d+(\\.\\d+)?)(\\s*-\\s*\\d+(\\.\\d+)?)?")) {
+        s = s.replace(rx("\\bf\\s*/?\\s*(\\d+(\\.\\d+)?)(\\s*-\\s*\\d+(\\.\\d+)?)?")) {
             if (aperture == null) aperture = "f" + it.groupValues[1].removeSuffix(".0")
             " "
         }
         // speeds aren't identity ("200 mb/s"), capacities are ("128 go" -> 128gb)
-        s = s.replace(Regex("\\d+\\s*(mb|mo)\\s*/\\s*s"), " ")
-        s = s.replace(Regex("\\b(\\d+)\\s*(go|gb)\\b")) { "${it.groupValues[1]}gb" }
-        s = s.replace(Regex("\\b(\\d+)\\s*(to|tb)\\b")) { "${it.groupValues[1]}tb" }
+        s = s.replace(rx("\\d+\\s*(mb|mo)\\s*/\\s*s"), " ")
+        s = s.replace(rx("\\b(\\d+)\\s*(go|gb)\\b")) { "${it.groupValues[1]}gb" }
+        s = s.replace(rx("\\b(\\d+)\\s*(to|tb)\\b")) { "${it.groupValues[1]}tb" }
         // dimensions "80*120cm", "2x3m" -> one token
-        s = s.replace(Regex("\\b(\\d+)\\s*[x*]\\s*(\\d+)\\s*(cm|m)?\\b")) { "${it.groupValues[1]}x${it.groupValues[2]}${it.groupValues[3]}" }
+        s = s.replace(rx("\\b(\\d+)\\s*[x*]\\s*(\\d+)\\s*(cm|m)?\\b")) { "${it.groupValues[1]}x${it.groupValues[2]}${it.groupValues[3]}" }
         // other units stay with their number: "150 w" -> "150w"
-        s = s.replace(Regex("\\b(\\d+(\\.\\d+)?)\\s+(w|ws|mah|cm|mm|k|m|v|wh|pouces|inch)\\b")) { it.groupValues[1] + it.groupValues[3] }
+        s = s.replace(rx("\\b(\\d+(\\.\\d+)?)\\s+(w|ws|mah|cm|mm|k|m|v|wh|pouces|inch)\\b")) { it.groupValues[1] + it.groupValues[3] }
 
-        val raw = s.split(Regex("[^a-z0-9.]+")).map { it.trim('.') }.filter { it.isNotBlank() }
+        val raw = s.split(rx("[^a-z0-9.]+")).map { it.trim('.') }.filter { it.isNotBlank() }
         // a number right after a name word belongs to it: "hero 13" -> "hero13", "rs 3" -> "rs3", "go 2" -> "go2"
         val tokens = ArrayList<String>()
         for (tk in raw) {
             val prev = tokens.lastOrNull()
-            if (tk.matches(Regex("\\d{1,2}")) && prev != null && prev.all { it.isLetter() } && prev.length >= 2 &&
+            if (tk.matches(rx("\\d{1,2}")) && prev != null && prev.all { it.isLetter() } && prev.length >= 2 &&
                 prev !in STOP && prev !in COLORS && prev !in BRANDS && !BRAND_ALIASES.containsKey(prev)
             ) {
                 tokens[tokens.lastIndex] = prev + tk
@@ -218,11 +253,11 @@ object Matcher {
             val hasDigit = tk.any { it.isDigit() }
             val hasLetter = tk.any { it.isLetter() }
             when {
-                tk.matches(Regex("mk\\d")) -> models += tk
-                tk.matches(Regex("\\d+mm")) -> if (lens == null) lens = tk else words += tk
-                tk.matches(Regex("\\d+(gb|tb)")) -> models += tk
-                tk.matches(Regex("\\d+(\\.\\d+)?k")) -> words += tk
-                tk.matches(Regex("\\d+(\\.\\d+)?(mah|w|ws|wh|v|p|fps|m|cm|pouces|inch|mhz|ghz|hz)")) -> words += tk
+                tk.matches(rx("mk\\d")) -> models += tk
+                tk.matches(rx("\\d+mm")) -> if (lens == null) lens = tk else words += tk
+                tk.matches(rx("\\d+(gb|tb)")) -> models += tk
+                tk.matches(rx("\\d+(\\.\\d+)?k")) -> words += tk
+                tk.matches(rx("\\d+(\\.\\d+)?(mah|w|ws|wh|v|p|fps|m|cm|pouces|inch|mhz|ghz|hz)")) -> words += tk
                 hasDigit && hasLetter -> models += tk
                 hasDigit -> models += tk
                 tk in VARIANTS -> variants += tk

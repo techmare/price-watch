@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -34,7 +35,7 @@ import com.techmare.pricewatch.core.Matcher
 import com.techmare.pricewatch.core.Position
 
 enum class Filter(val label: String) {
-    CHEAPER("Cheaper elsewhere"), CHEAPEST("You're cheapest"), SAME("Same price"), NONE("Not found elsewhere"), ALL("All")
+    CHEAPER("Cheaper elsewhere"), CHEAPEST("You're cheapest"), SAME("Same price"), NONE("Not available elsewhere"), ALL("All")
 }
 
 @Composable
@@ -48,13 +49,16 @@ fun ProductsScreen(state: UiState, initialFilter: Filter, onOpen: (Comparison) -
         Filter.CHEAPER -> cmp.position == Position.CHEAPER_ELSEWHERE
         Filter.CHEAPEST -> cmp.position == Position.CHEAPEST
         Filter.SAME -> cmp.position == Position.SAME
-        Filter.NONE -> cmp.position == Position.NO_MATCH
+        Filter.NONE -> cmp.position == Position.NO_MATCH || cmp.position == Position.OUT_OF_STOCK_ELSEWHERE
         Filter.ALL -> true
     }
     val q = Matcher.normalize(query).split(" ").filter { it.isNotBlank() }
     val shown = comps.filter { inFilter(it, filter) }
         .filter { cmp -> q.isEmpty() || Matcher.normalize(cmp.own.name).let { n -> q.all { n.contains(it) } } }
         .let { list -> if (filter == Filter.CHEAPER) list.sortedByDescending { it.diff ?: 0.0 } else list.sortedBy { it.own.name.lowercase() } }
+
+    // the same product listed more than once on your site, often at different prices
+    val sameName = remember(comps) { comps.groupBy { Matcher.shortName(it.own.name).lowercase() } }
 
     Column {
         OutlinedTextField(
@@ -87,12 +91,14 @@ fun ProductsScreen(state: UiState, initialFilter: Filter, onOpen: (Comparison) -
             itemsIndexed(shown, key = { _, it -> it.own.url }) { i, cmp ->
                 val best = cmp.best
                 val sub = when {
-                    best == null -> "Not found at other shops"
+                    cmp.offers.isEmpty() -> "Not found at other shops"
+                    best == null -> "Out of stock at ${cmp.offers.size} shop${if (cmp.offers.size > 1) "s" else ""}"
                     else -> "${best.siteName} ${dh(best.price)}" + if (cmp.offers.size > 1) ", ${cmp.offers.size} shops" else ""
-                }
+                } + sameName[Matcher.shortName(cmp.own.name).lowercase()].orEmpty().firstOrNull { it !== cmp }
+                    ?.let { ". Also on your site at ${dh(it.own.price)}" }.orEmpty()
                 Column(Modifier.clickable { onOpen(cmp) }) {
                     ProductLine(
-                        name = Matcher.displayName(cmp.own.name), sub = sub,
+                        name = Matcher.shortName(cmp.own.name), sub = sub,
                         right = dh(cmp.own.price), rightColor = c.ink,
                         rightSub = cmp.diff?.let { if (cmp.position == Position.SAME) "same" else signedDh(it) },
                         rightSubColor = diffColor(cmp.diff, state.threshold),

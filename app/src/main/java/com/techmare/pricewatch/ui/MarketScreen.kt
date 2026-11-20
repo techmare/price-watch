@@ -47,20 +47,22 @@ fun MarketScreen(state: UiState) {
     var shop by rememberSaveable { mutableStateOf<String?>(null) }
     var sort by rememberSaveable { mutableStateOf(Sort.CHEAP) }
     var inStockOnly by rememberSaveable { mutableStateOf(true) }
+    var gearOnly by rememberSaveable { mutableStateOf(true) }
     val listState = rememberLazyListState()
 
     val snap = state.snapshot
     val shops = snap?.competitors?.filter { it.id !in state.excluded && it.products.isNotEmpty() }.orEmpty()
     // normalised names computed once per download
     val all = remember(snap, state.excluded) {
-        shops.flatMap { s -> s.products.map { it to Matcher.normalize(it.name) } }
+        shops.flatMap { s -> s.products.map { Triple(it, Matcher.normalize(it.name), Matcher.isGear(it.name)) } }
     }
     val words = Matcher.normalize(query).split(Regex("\\s+")).filter { it.isNotBlank() }
-    val shown = remember(all, query, shop, sort, inStockOnly) {
+    val shown = remember(all, query, shop, sort, inStockOnly, gearOnly) {
         all.asSequence()
-            .filter { (o, _) -> shop == null || o.siteId == shop }
-            .filter { (o, _) -> !inStockOnly || o.inStock }
-            .filter { (_, n) -> words.all { n.contains(it) } }
+            .filter { (o, _, _) -> shop == null || o.siteId == shop }
+            .filter { (o, _, _) -> !inStockOnly || o.inStock }
+            .filter { (_, _, gear) -> !gearOnly || gear }
+            .filter { (_, n, _) -> words.all { n.contains(it) } }
             .map { it.first }
             .let { seq ->
                 when (sort) {
@@ -70,7 +72,7 @@ fun MarketScreen(state: UiState) {
                 }
             }.toList()
     }
-    LaunchedEffect(query, shop, sort, inStockOnly) { listState.scrollToItem(0) }
+    LaunchedEffect(query, shop, sort, inStockOnly, gearOnly) { listState.scrollToItem(0) }
 
     Column {
         OutlinedTextField(
@@ -98,6 +100,7 @@ fun MarketScreen(state: UiState) {
                 FilterChip(selected = sort == s, onClick = { sort = s }, label = { Text(s.label) }, colors = chipColors)
             }
             FilterChip(selected = inStockOnly, onClick = { inStockOnly = !inStockOnly }, label = { Text("In stock only") }, colors = chipColors)
+            FilterChip(selected = gearOnly, onClick = { gearOnly = !gearOnly }, label = { Text("Camera gear only") }, colors = chipColors)
         }
         Text(
             when {
@@ -111,7 +114,7 @@ fun MarketScreen(state: UiState) {
             itemsIndexed(shown, key = { _, o -> o.siteId + o.url }) { i, o ->
                 Column(Modifier.clickable { openUrl(context, o.url) }) {
                     ProductLine(
-                        name = o.name,
+                        name = Matcher.displayName(o.name),
                         sub = o.siteName + if (!o.inStock) ", out of stock" else "",
                         right = dh(o.price), rightColor = if (o.inStock) c.ink else c.muted,
                         rightSub = o.regular?.let { "was ${dh(it)}" },

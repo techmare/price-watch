@@ -46,10 +46,12 @@ fun ShopsScreen(vm: MainViewModel, state: UiState) {
                 SectionTitle("Your shop")
                 SiteRow(own, included = null, onToggle = {}, onOpen = { openUrl(context, own.url) })
             }
-            SectionTitle("Competitors", "${snap.competitors.count { it.id !in state.excluded }} watched")
-            snap.competitors.forEachIndexed { i, s ->
+            SectionTitle("Competitors", "${snap.competitors.count { it.ok && it.id !in state.excluded }} of ${snap.competitors.size} working")
+            // working shops first, then the ones that couldn't be read
+            val sorted = snap.competitors.sortedWith(compareBy({ !it.ok }, { it.name.lowercase() }))
+            sorted.forEachIndexed { i, s ->
                 SiteRow(s, included = s.id !in state.excluded, onToggle = { vm.setSiteIncluded(s.id, it) }, onOpen = { openUrl(context, s.url) })
-                if (i < snap.competitors.lastIndex) HorizontalDivider(color = c.rule)
+                if (i < sorted.lastIndex) HorizontalDivider(color = c.rule)
             }
         }
 
@@ -106,8 +108,8 @@ private fun SiteRow(s: Site, included: Boolean?, onToggle: (Boolean) -> Unit, on
                 when {
                     s.ok -> "${s.products.size} products, checked ${prettyTime(s.checked)}"
                     s.products.isNotEmpty() -> "Couldn't be read ${prettyTime(s.checked)}; showing older prices"
-                    s.own -> "Blocks automatic visitors, so your prices can't be read yet"
-                    else -> "Blocks automatic price checks"
+                    s.own -> "Couldn't read your prices ${prettyTime(s.checked)}"
+                    else -> "Couldn't read its products ${prettyTime(s.checked)}"
                 },
                 style = MaterialTheme.typography.bodySmall, color = c.muted,
             )

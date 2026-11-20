@@ -32,6 +32,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,11 +54,12 @@ enum class Tab(val label: String, val title: String, val icon: ImageVector) {
 fun App(vm: MainViewModel) {
     val c = LocalAppColors.current
     val state by vm.state.collectAsState()
-    var tab by remember { mutableStateOf(Tab.TODAY) }
-    var productFilter by remember { mutableStateOf(Filter.CHEAPER) }
-    var openUrl by remember { mutableStateOf<String?>(null) }
+    var tab by rememberSaveable { mutableStateOf(Tab.TODAY) }
+    var productFilter by rememberSaveable { mutableStateOf(Filter.CHEAPER) }
+    var openUrl by rememberSaveable { mutableStateOf<String?>(null) }
     val open = state.comparisons.firstOrNull { it.own.url == openUrl }
     BackHandler(enabled = openUrl != null) { openUrl = null }
+    val tabs = rememberSaveableStateHolder()
 
     Scaffold(
         containerColor = c.paper,
@@ -95,8 +98,9 @@ fun App(vm: MainViewModel) {
             modifier = Modifier.fillMaxSize().padding(padding),
         ) {
             Box(Modifier.fillMaxSize()) {
-                when {
-                    open != null -> DetailScreen(vm, open, state.threshold)
+                if (open != null) DetailScreen(vm, open, state.threshold)
+                // each tab keeps its search, filters and scroll position while you look at a product
+                else tabs.SaveableStateProvider(tab.name) { when {
                     tab == Tab.TODAY -> TodayScreen(
                         state,
                         onOpen = { openUrl = it.own.url },
@@ -107,7 +111,7 @@ fun App(vm: MainViewModel) {
                     tab == Tab.SEARCH -> MarketScreen(state)
                     tab == Tab.PRODUCTS -> ProductsScreen(state, productFilter) { openUrl = it.own.url }
                     else -> ShopsScreen(vm, state)
-                }
+                } }
             }
         }
     }

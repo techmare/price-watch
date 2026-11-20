@@ -38,7 +38,12 @@ data class Overrides(
     val rejected: Map<String, Set<String>> = emptyMap(),
 )
 
-enum class Position { CHEAPER_ELSEWHERE, SAME, CHEAPEST, NO_MATCH }
+enum class Position {
+    CHEAPER_ELSEWHERE, SAME, CHEAPEST,
+    /** Other shops list it, but none has it in stock right now. */
+    OUT_OF_STOCK_ELSEWHERE,
+    NO_MATCH,
+}
 
 data class Comparison(
     val own: Offer,
@@ -51,7 +56,8 @@ data class Comparison(
     /** Same model code but a price too far from yours to trust: shown for you to confirm, not counted. */
     val possible: List<Offer> = emptyList(),
 ) {
-    val best: Offer? get() = offers.firstOrNull { it.inStock } ?: offers.firstOrNull()
+    /** Cheapest shop that has it in stock. */
+    val best: Offer? get() = offers.firstOrNull { it.inStock }
 }
 
 object Compare {
@@ -108,10 +114,12 @@ object Compare {
             }
             val offers = perSite.values.map { it.first }.sortedWith(compareBy({ !it.inStock }, { it.price }))
             val possible = possiblePerSite.filterKeys { it !in perSite }.values.sortedBy { it.price }
-            val best = offers.firstOrNull { it.inStock } ?: offers.firstOrNull()
+            // only shops that can sell it today decide where you stand
+            val best = offers.firstOrNull { it.inStock }
             val diff = best?.let { mine.price - it.price }
             val pos = when {
-                best == null -> Position.NO_MATCH
+                offers.isEmpty() -> Position.NO_MATCH
+                best == null -> Position.OUT_OF_STOCK_ELSEWHERE
                 diff!! > threshold -> Position.CHEAPER_ELSEWHERE
                 diff < -threshold -> Position.CHEAPEST
                 else -> Position.SAME
