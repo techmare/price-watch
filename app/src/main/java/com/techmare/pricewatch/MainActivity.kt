@@ -18,7 +18,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // always dark: light status and navigation bar icons
+        enableEdgeToEdge(
+            statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.parseColor("#171C22")),
+        )
         if (savedInstanceState == null) {
             val prefs = com.techmare.pricewatch.data.Prefs(this)
             PriceWorker.schedule(this, prefs.notify)

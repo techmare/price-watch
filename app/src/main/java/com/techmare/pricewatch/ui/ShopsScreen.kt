@@ -40,7 +40,7 @@ fun ShopsScreen(vm: MainViewModel, state: UiState) {
     val c = LocalAppColors.current
     val context = LocalContext.current
     val snap = state.snapshot
-    Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
         if (snap != null) {
             snap.own?.let { own ->
                 SectionTitle("Your shop")
@@ -51,43 +51,35 @@ fun ShopsScreen(vm: MainViewModel, state: UiState) {
             val sorted = snap.competitors.sortedWith(compareBy({ !it.ok }, { it.name.lowercase() }))
             sorted.forEachIndexed { i, s ->
                 SiteRow(s, included = s.id !in state.excluded, onToggle = { vm.setSiteIncluded(s.id, it) }, onOpen = { openUrl(context, s.url) })
-                if (i < sorted.lastIndex) HorizontalDivider(color = c.rule)
+                if (i < sorted.lastIndex) RowDivider()
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-        SectionTitle("Ignore small differences")
-        Text("Prices within this amount count as the same.", style = MaterialTheme.typography.bodySmall, color = c.muted)
-        Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(0, 20, 50, 100, 200).forEach { v ->
-                FilterChip(
-                    selected = state.threshold == v, onClick = { vm.setThreshold(v) },
-                    label = { Text(if (v == 0) "Exact" else "$v dh") },
-                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = c.signal, selectedLabelColor = Color(0xFF1C1F23)),
-                )
-            }
-        }
-
+        SectionTitle("Count as the same price")
+        Text("Differences up to this amount are treated as equal.", style = MaterialTheme.typography.bodySmall, color = c.muted)
         Spacer(Modifier.height(8.dp))
+        ChoiceRow(listOf(0, 20, 50, 100, 200), state.threshold, { if (it == 0) "Exact" else "$it dh" }, vm::setThreshold)
+
+        SectionTitle("Notifications")
         Row(
-            Modifier.fillMaxWidth().toggleable(state.notify, role = Role.Switch, onValueChange = vm::setNotify).padding(vertical = 10.dp),
+            Modifier.fillMaxWidth().toggleable(state.notify, role = Role.Switch, onValueChange = vm::setNotify).padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Price change notifications", style = MaterialTheme.typography.bodyLarge, color = c.ink)
-                Text("When the new daily prices arrive and a competitor changed a price on one of your products. Never at night.", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                Text("Price changes on your products", style = MaterialTheme.typography.bodyLarge, color = c.ink)
+                Text("Once a day, when the new prices arrive. Never at night.", style = MaterialTheme.typography.bodySmall, color = c.muted)
             }
             Switch(
                 checked = state.notify, onCheckedChange = null,
-                colors = SwitchDefaults.colors(checkedTrackColor = c.signal, checkedThumbColor = Color(0xFF1C1F23), checkedBorderColor = c.signal),
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = c.signal, checkedThumbColor = Color(0xFF15181C), checkedBorderColor = c.signal,
+                    uncheckedTrackColor = c.panel, uncheckedThumbColor = c.faint, uncheckedBorderColor = c.rule,
+                ),
             )
         }
         Spacer(Modifier.height(16.dp))
-        Text(
-            "Prices are checked once a day, overnight, from each shop's public product pages. Shops that take too long are skipped and keep their last prices.",
-            style = MaterialTheme.typography.bodySmall, color = c.muted,
-        )
-        Spacer(Modifier.height(16.dp))
+        Note("Prices are read once a day, overnight, from each shop's public product pages. A shop that takes too long is skipped and keeps its last prices.")
+        Spacer(Modifier.height(20.dp))
     }
 }
 
@@ -99,27 +91,38 @@ private fun SiteRow(s: Site, included: Boolean?, onToggle: (Boolean) -> Unit, on
         !s.ok -> c.high
         else -> c.ok
     }
-    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(10.dp).clip(CircleShape).background(status))
+    val off = included == false
+    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        StatusDot(if (off) c.faint else status)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(s.name, style = MaterialTheme.typography.titleSmall, color = c.ink)
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(s.name, style = MaterialTheme.typography.titleSmall, color = if (off) c.muted else c.ink)
+                Spacer(Modifier.width(8.dp))
+                Text(s.url.removePrefix("https://").removePrefix("www.").trimEnd('/'), style = MaterialTheme.typography.bodySmall, color = c.faint, maxLines = 1)
+            }
             Text(
                 when {
-                    s.ok -> "${s.products.size} products, checked ${prettyTime(s.checked)}"
-                    s.products.isNotEmpty() -> "Couldn't be read ${prettyTime(s.checked)}; showing older prices"
+                    off -> "Hidden from comparisons"
+                    s.ok -> "Read ${prettyTime(s.checked)}"
+                    s.products.isNotEmpty() -> "Couldn't be read ${prettyTime(s.checked)}. Showing older prices"
                     s.own -> "Couldn't read your prices ${prettyTime(s.checked)}"
                     else -> "Couldn't read its products ${prettyTime(s.checked)}"
                 },
-                style = MaterialTheme.typography.bodySmall, color = c.muted,
+                style = MaterialTheme.typography.bodySmall, color = if (!s.ok && !off) status else c.muted,
             )
-            Text(s.url.removePrefix("https://").removePrefix("www."), style = MaterialTheme.typography.bodySmall, color = c.muted,
-                modifier = Modifier.clickable(onClick = onOpen))
+        }
+        if (s.products.isNotEmpty()) {
+            Text(num(s.products.size.toDouble()), style = Num.row, color = if (off) c.faint else c.muted)
+            Spacer(Modifier.width(12.dp))
         }
         if (included != null) {
             Switch(
                 checked = included, onCheckedChange = onToggle,
-                colors = SwitchDefaults.colors(checkedTrackColor = c.signal, checkedThumbColor = Color(0xFF1C1F23), checkedBorderColor = c.signal),
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = c.ink, checkedThumbColor = c.paper, checkedBorderColor = c.ink,
+                    uncheckedTrackColor = c.paper, uncheckedThumbColor = c.faint, uncheckedBorderColor = c.faint,
+                ),
             )
         }
     }

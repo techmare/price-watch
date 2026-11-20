@@ -43,6 +43,8 @@ class ScreenTour {
     private val out = System.getProperty("screens.dir") ?: "build/screens"
 
     private fun shot(name: String) {
+        // let background loads (price history) land before the picture
+        repeat(10) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); Thread.sleep(60) }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("$out/$name.png")
     }
@@ -88,7 +90,7 @@ class ScreenTour {
         back()
 
         comps.firstOrNull { it.possible.isNotEmpty() }?.let { p ->
-            compose.onAllNodes(hasText("All ", substring = true) and !hasSetTextAction()).onFirst().performScrollTo().performClick()
+            compose.onAllNodes(hasText("All") and !hasSetTextAction()).onFirst().performScrollTo().performClick()
             search(Matcher.shortName(p.own.name)); openProduct(Matcher.shortName(p.own.name)); shot("04_detail_possible")
             back()
         }
@@ -117,5 +119,23 @@ class ScreenTour {
             }
         }
         shot("06_find_dialog")
+    }
+
+    /** The ticker tape with sample moves (it only shows on days with price changes). */
+    @Test fun tickerTape() {
+        compose.mainClock.autoAdvance = false   // the tape scrolls forever
+        compose.setContent {
+            PriceTheme {
+                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(vertical = 24.dp)) {
+                    com.techmare.pricewatch.ui.TickerTape(listOf(
+                        com.techmare.pricewatch.ui.Tick("Sony A7 IV  Kamerty 20 499", "−1.5k", true),
+                        com.techmare.pricewatch.ui.Tick("DJI Mic 3  Fullpix 2 390", "+200", false),
+                        com.techmare.pricewatch.ui.Tick("Canon R50  Photo Store 6 990", "−300", true),
+                    )) {}
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(1500)
+        compose.onRoot().captureRoboImage("$out/10_ticker.png")
     }
 }

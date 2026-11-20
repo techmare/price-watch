@@ -105,5 +105,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun search(query: String): List<Offer> = _state.value.snapshot?.let { Compare.search(it, query) }.orEmpty()
 
-    suspend fun history(offer: Offer): List<PricePoint> = withContext(Dispatchers.IO) { repo.history(offer.siteId, offer.url) }
+    /** Cheapest in-stock competitor price on each day we have data for. */
+    suspend fun bestHistory(cmp: Comparison): List<PricePoint> = withContext(Dispatchers.IO) {
+        val hs = cmp.offers.map { o -> repo.history(o.siteId, o.url).sortedBy { it.date } }
+        val dates = hs.flatMap { h -> h.map { it.date } }.distinct().sorted()
+        val today = java.time.LocalDate.now().toString()
+        (dates + today).distinct().mapNotNull { d ->
+            hs.mapNotNull { h -> h.lastOrNull { it.date <= d }?.takeIf { it.inStock } }
+                .minByOrNull { it.price }?.let { PricePoint(d, it.price, true) }
+        }
+    }
+
+    /** Price changes for one page, carried on to today so a steady price still draws a line. */
+    suspend fun history(offer: Offer): List<PricePoint> = withContext(Dispatchers.IO) {
+        val h = repo.history(offer.siteId, offer.url).sortedBy { it.date }
+        val today = java.time.LocalDate.now().toString()
+        if (h.isNotEmpty() && h.last().date < today) h + PricePoint(today, offer.price, offer.inStock) else h
+    }
 }
